@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route } from 'react-router-dom'
+import { HashRouter, Routes, Route } from 'react-router-dom'
 import { Toaster } from '@/components/ui/sonner'
 import { Sidebar } from '@/components/layout/Sidebar'
 import HomePage from '@/pages/HomePage'
@@ -23,7 +23,7 @@ function Layout({ children }: { children: React.ReactNode }) {
 
 function App() {
   return (
-    <BrowserRouter>
+    <HashRouter>
       <Layout>
         <Routes>
           <Route path="/" element={<HomePage />} />
@@ -37,7 +37,7 @@ function App() {
         </Routes>
       </Layout>
       <Toaster />
-    </BrowserRouter>
+    </HashRouter>
   )
 }
 
