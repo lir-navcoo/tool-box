@@ -23,7 +23,7 @@ function Layout({ children }: { children: React.ReactNode }) {
 
 function App() {
   return (
-    <HashRouter basename="/tool-box">
+    <HashRouter>
       <Layout>
         <Routes>
           <Route path="/" element={<HomePage />} />
