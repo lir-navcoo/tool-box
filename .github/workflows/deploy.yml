@@ -20,8 +20,6 @@ jobs:
           node-version: '22'
 
       - name: Install & Build
-        env:
-          BASE_URL: /tool-box/
         run: |
           npm ci
           npm run build
