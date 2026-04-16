@@ -4,13 +4,15 @@ import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { toast } from 'sonner'
-import { Upload } from 'lucide-react'
+import { Upload, Download } from 'lucide-react'
 
 export default function ImagePage() {
   const [file, setFile] = useState<File | null>(null)
   const [preview, setPreview] = useState('')
   const [format, setFormat] = useState('image/png')
   const [quality, setQuality] = useState(0.92)
+  const [resultUrl, setResultUrl] = useState('')
+  const [resultName, setResultName] = useState('')
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -19,6 +21,7 @@ export default function ImagePage() {
     if (!f) return
     setFile(f)
     setPreview(URL.createObjectURL(f))
+    setResultUrl('')
   }
 
   const getExt = (mime: string) => {
@@ -44,26 +47,22 @@ export default function ImagePage() {
 
     try {
       if (format === 'image/svg+xml') {
-        // 导出为 SVG：把源图片嵌入为 <image> 元素
         const reader = new FileReader()
         const svgText = await new Promise<string>((res) => {
           reader.onload = () => res(reader.result as string)
           reader.readAsText(file!)
         })
-        // 获取源图片的 data URL
         const srcDataUrl = await new Promise<string>((res) => {
           const fr = new FileReader()
           fr.onload = () => res(fr.result as string)
           fr.readAsDataURL(file!)
         })
-        // 解析 SVG 宽高
         const parser = new DOMParser()
         const doc = parser.parseFromString(svgText, 'image/svg+xml')
         const svg = doc.documentElement
         const w = svg.getAttribute('width') || '300'
         const h = svg.getAttribute('height') || '200'
         svg.setAttribute('xmlns', 'http://www.w3.org/2000/svg')
-        // 注入 image
         const imgEl = doc.createElementNS('http://www.w3.org/2000/svg', 'image')
         imgEl.setAttribute('href', srcDataUrl)
         imgEl.setAttribute('width', w)
@@ -71,22 +70,18 @@ export default function ImagePage() {
         imgEl.setAttribute('x', '0')
         imgEl.setAttribute('y', '0')
         svg.appendChild(imgEl)
-        // 清理多余人元素
         const toRemove = Array.from(svg.children).filter(c => c.tagName !== 'svg' && c.tagName !== 'image' && c.tagName !== 'defs')
         toRemove.forEach(c => svg.removeChild(c))
         const blob = new Blob([new XMLSerializer().serializeToString(svg)], { type: 'image/svg+xml' })
-        const a = document.createElement('a')
-        a.href = URL.createObjectURL(blob)
-        a.download = 'converted.svg'
-        a.click()
-        toast.success('SVG 导出完成')
+        const url = URL.createObjectURL(blob)
+        setResultUrl(url)
+        setResultName('converted.svg')
+        toast.success('转换完成，点击预览下载')
         return
       }
 
-      // PNG / JPG / WebP
       let imgSrc = preview
       if (isSvg(file)) {
-        // SVG → data URL via base64
         imgSrc = await new Promise<string>((res) => {
           const fr = new FileReader()
           fr.onload = () => res(fr.result as string)
@@ -102,14 +97,20 @@ export default function ImagePage() {
       ctx.drawImage(img, 0, 0)
       const mime = format === 'image/webp' ? 'image/webp' : format === 'image/jpeg' ? 'image/jpeg' : 'image/png'
       const dataUrl = canvas.toDataURL(mime, quality)
-      const a = document.createElement('a')
-      a.href = dataUrl
-      a.download = 'converted.' + getExt(mime)
-      a.click()
-      toast.success('图片转换完成')
+      setResultUrl(dataUrl)
+      setResultName('converted.' + getExt(mime))
+      toast.success('转换完成，点击预览下载')
     } catch (e) {
       toast.error('转换失败：' + (e as Error).message)
     }
+  }
+
+  const download = () => {
+    if (!resultUrl) return
+    const a = document.createElement('a')
+    a.href = resultUrl
+    a.download = resultName
+    a.click()
   }
 
   return (
@@ -151,9 +152,18 @@ export default function ImagePage() {
           </CardContent>
         </Card>
         <Card className="lg:col-span-2">
-          <CardHeader><CardTitle className="text-sm font-medium">预览</CardTitle></CardHeader>
-          <CardContent className="flex items-center justify-center min-h-80">
-            {preview ? (
+          <CardHeader>
+            <CardTitle className="text-sm font-medium">预览</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col items-center justify-center min-h-80 gap-4">
+            {resultUrl ? (
+              <>
+                <img src={resultUrl} alt="Result" className="max-w-full max-h-80 object-contain border rounded" />
+                <Button onClick={download} className="gap-2">
+                  <Download className="h-4 w-4" />下载 {resultName}
+                </Button>
+              </>
+            ) : preview ? (
               <img src={preview} alt="Preview" className="max-w-full max-h-80 object-contain border rounded" />
             ) : (
               <p className="text-muted-foreground text-sm">选择图片后预览</p>
