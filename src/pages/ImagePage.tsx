@@ -18,8 +18,7 @@ export default function ImagePage() {
     const f = e.target.files?.[0]
     if (!f) return
     setFile(f)
-    const url = URL.createObjectURL(f)
-    setPreview(url)
+    setPreview(URL.createObjectURL(f))
   }
 
   const getExt = (mime: string) => {
@@ -29,29 +28,78 @@ export default function ImagePage() {
     return 'png'
   }
 
-  const convert = () => {
+  const isSvg = (f: File) => f.type === 'image/svg+xml' || f.name.endsWith('.svg')
+
+  const loadImage = (src: string): Promise<HTMLImageElement> => {
+    return new Promise((resolve, reject) => {
+      const img = new Image()
+      img.onload = () => resolve(img)
+      img.onerror = reject
+      img.src = src
+    })
+  }
+
+  const convert = async () => {
     if (!file) return
 
-    const img = new Image()
-    img.onload = () => {
-      const canvas = canvasRef.current!
-      canvas.width = img.naturalWidth || img.width
-      canvas.height = img.naturalHeight || img.height
-      const ctx = canvas.getContext('2d')!
-
+    try {
       if (format === 'image/svg+xml') {
-        // SVG 输出：把源图画到 canvas 再序列化为 SVG（简单像素化）
-        ctx.drawImage(img, 0, 0)
-        const svgStr = `<svg xmlns="http://www.w3.org/2000/svg" width="${canvas.width}" height="${canvas.height}"><image href="${canvas.toDataURL('image/png')}" width="${canvas.width}" height="${canvas.height}"/></svg>`
-        const blob = new Blob([svgStr], { type: 'image/svg+xml' })
+        // 导出为 SVG：把源图片嵌入为 <image> 元素
+        const reader = new FileReader()
+        const svgText = await new Promise<string>((res) => {
+          reader.onload = () => res(reader.result as string)
+          reader.readAsText(file!)
+        })
+        // 获取源图片的 data URL
+        const srcDataUrl = await new Promise<string>((res) => {
+          const fr = new FileReader()
+          fr.onload = () => res(fr.result as string)
+          fr.readAsDataURL(file!)
+        })
+        // 解析 SVG 宽高
+        const parser = new DOMParser()
+        const doc = parser.parseFromString(svgText, 'image/svg+xml')
+        const svg = doc.documentElement
+        const w = svg.getAttribute('width') || '300'
+        const h = svg.getAttribute('height') || '200'
+        svg.setAttribute('xmlns', 'http://www.w3.org/2000/svg')
+        // 注入 image
+        const imgEl = doc.createElementNS('http://www.w3.org/2000/svg', 'image')
+        imgEl.setAttribute('href', srcDataUrl)
+        imgEl.setAttribute('width', w)
+        imgEl.setAttribute('height', h)
+        imgEl.setAttribute('x', '0')
+        imgEl.setAttribute('y', '0')
+        svg.appendChild(imgEl)
+        // 清理多余人元素
+        const toRemove = Array.from(svg.children).filter(c => c.tagName !== 'svg' && c.tagName !== 'image' && c.tagName !== 'defs')
+        toRemove.forEach(c => svg.removeChild(c))
+        const blob = new Blob([new XMLSerializer().serializeToString(svg)], { type: 'image/svg+xml' })
         const a = document.createElement('a')
         a.href = URL.createObjectURL(blob)
         a.download = 'converted.svg'
         a.click()
-        toast.success('SVG 导出完成（已嵌入 PNG）')
+        toast.success('SVG 导出完成')
         return
       }
 
+      // PNG / JPG / WebP
+      let imgSrc = preview
+      if (isSvg(file)) {
+        // SVG → data URL via base64
+        imgSrc = await new Promise<string>((res) => {
+          const fr = new FileReader()
+          fr.onload = () => res(fr.result as string)
+          fr.readAsDataURL(file!)
+        })
+      }
+
+      const img = await loadImage(imgSrc)
+      const canvas = canvasRef.current!
+      canvas.width = img.naturalWidth
+      canvas.height = img.naturalHeight
+      const ctx = canvas.getContext('2d')!
+      ctx.drawImage(img, 0, 0)
       const mime = format === 'image/webp' ? 'image/webp' : format === 'image/jpeg' ? 'image/jpeg' : 'image/png'
       const dataUrl = canvas.toDataURL(mime, quality)
       const a = document.createElement('a')
@@ -59,18 +107,8 @@ export default function ImagePage() {
       a.download = 'converted.' + getExt(mime)
       a.click()
       toast.success('图片转换完成')
-    }
-
-    if (file.type === 'image/svg+xml' || file.name.endsWith('.svg')) {
-      // SVG 源：读取文本，注入到 img
-      const reader = new FileReader()
-      reader.onload = () => {
-        const svgBlob = new Blob([reader.result as string], { type: 'image/svg+xml' })
-        img.src = URL.createObjectURL(svgBlob)
-      }
-      reader.readAsText(file)
-    } else {
-      img.src = preview
+    } catch (e) {
+      toast.error('转换失败：' + (e as Error).message)
     }
   }
 
